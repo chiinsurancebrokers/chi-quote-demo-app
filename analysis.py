@@ -207,11 +207,14 @@ def generate_recommendation_analysis(
         try:
             response = client_obj.messages.create(
                 model=MODEL,
-                max_tokens=2000,
+                max_tokens=4096,
                 messages=[{"role": "user", "content": prompt}],
             )
             raw = response.content[0].text.strip()
             raw = re.sub(r"```json|```", "", raw).strip()
+            m = re.search(r"\{.*\}", raw, re.DOTALL)
+            if m:
+                raw = m.group(0)
             return json.loads(raw)
 
         except anthropic.RateLimitError as e:
@@ -234,8 +237,16 @@ def generate_recommendation_analysis(
             ) from e
 
         except json.JSONDecodeError as e:
-            raise RuntimeError(
-                "Το Claude επέστρεψε μη-έγκυρο JSON στην ανάλυση. Δοκίμασε ξανά."
-            ) from e
+            last_error = e
+            if attempt < MAX_RETRIES - 1:
+                st.warning(
+                    f"⚠️ Μη-έγκυρο JSON στην ανάλυση — επανάληψη "
+                    f"(απόπειρα {attempt + 1}/{MAX_RETRIES})..."
+                )
+                time.sleep(2)
+            else:
+                raise RuntimeError(
+                    "Το Claude επέστρεψε μη-έγκυρο JSON στην ανάλυση μετά από πολλαπλές απόπειρες."
+                ) from e
 
     raise RuntimeError("Αποτυχία δημιουργίας ανάλυσης.") from last_error
