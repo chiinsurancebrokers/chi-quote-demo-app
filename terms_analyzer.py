@@ -229,11 +229,14 @@ def analyze_terms_pdf(
             try:
                 resp = client_obj.messages.create(
                     model=MODEL,
-                    max_tokens=1200,
+                    max_tokens=2500,
                     messages=[{"role": "user", "content": prompt}],
                 )
                 raw = resp.content[0].text.strip()
                 raw = re.sub(r"```json|```", "", raw).strip()
+                m = re.search(r"\{.*\}", raw, re.DOTALL)
+                if m:
+                    raw = m.group(0)
                 parsed = json.loads(raw)
 
                 excl = parsed.get("exclusions", [])
