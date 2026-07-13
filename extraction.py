@@ -312,14 +312,18 @@ def extract_insurance_data(pdf_bytes: bytes, api_key: str, filename: str = "") -
         try:
             response = client.messages.create(
                 model=MODEL,
-                max_tokens=2000,
+                max_tokens=4096,
                 messages=[{
                     "role": "user",
                     "content": user_content,
                 }],
             )
             raw = response.content[0].text.strip()
+            # Robust JSON extraction: strip code fences, then find the outermost {...}
             raw = re.sub(r"```json|```", "", raw).strip()
+            m = re.search(r"\{.*\}", raw, re.DOTALL)
+            if m:
+                raw = m.group(0)
             data = json.loads(raw)
 
             # ── Exclusions & safety analysis (from PythonProject5) ──
@@ -355,10 +359,19 @@ def extract_insurance_data(pdf_bytes: bytes, api_key: str, filename: str = "") -
             ) from e
 
         except json.JSONDecodeError as e:
-            raise RuntimeError(
-                "Το Claude επέστρεψε μη-έγκυρο JSON. "
-                "Δοκίμασε ξανά ή έλεγξε το PDF."
-            ) from e
+            last_error = e
+            if attempt < MAX_RETRIES - 1:
+                label = f" ({filename})" if filename else ""
+                st.warning(
+                    f"⚠️ Μη-έγκυρο JSON{label} — επανάληψη "
+                    f"(απόπειρα {attempt + 1}/{MAX_RETRIES})..."
+                )
+                time.sleep(2)
+            else:
+                raise RuntimeError(
+                    "Το Claude επέστρεψε μη-έγκυρο JSON μετά από πολλαπλές απόπειρες. "
+                    "Δοκίμασε ξανά ή έλεγξε το PDF."
+                ) from e
 
     raise RuntimeError("Αποτυχία εξαγωγής δεδομένων.") from last_error
 
